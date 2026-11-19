@@ -68,8 +68,8 @@ class JobAnalysisService:
             prompt_version="eligibility-v1",
         )
 
-        # 5. Save analysis
-        return JobAnalysisRepository.create(
+        # 5. Create or update analysis
+        return JobAnalysisRepository.upsert(
             db=db,
             data=analysis_data,
         )

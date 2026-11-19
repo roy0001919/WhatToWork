@@ -8,17 +8,42 @@ from app.schemas.job_analysis import JobAnalysisCreate
 class JobAnalysisRepository:
 
     @staticmethod
-    def create(db: Session, data: JobAnalysisCreate) -> JobAnalysis:
-        analysis = JobAnalysis(**data.model_dump())
+    def upsert(db: Session, data: JobAnalysisCreate) -> JobAnalysis:
+        """
+        Create a new analysis or update the existing analysis
+        for the same job and profile.
+        """
+        analysis_data = data.model_dump()
 
         try:
-            db.add(analysis)
+            analysis = db.scalar(
+                select(JobAnalysis)
+                .where(
+                    JobAnalysis.job_id == analysis_data["job_id"],
+                    JobAnalysis.profile_id == analysis_data["profile_id"],
+                )
+                .with_for_update()
+            )
+
+            if analysis is None:
+                analysis = JobAnalysis(**analysis_data)
+                db.add(analysis)
+            else:
+                for key, value in analysis_data.items():
+                    setattr(analysis, key, value)
+
             db.commit()
             db.refresh(analysis)
             return analysis
+
         except Exception:
             db.rollback()
             raise
+
+    @staticmethod
+    def create(db: Session, data: JobAnalysisCreate) -> JobAnalysis:
+        """Backward-compatible wrapper."""
+        return JobAnalysisRepository.upsert(db, data)
 
     @staticmethod
     def get_by_id(

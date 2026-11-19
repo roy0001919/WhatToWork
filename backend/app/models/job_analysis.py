@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -28,6 +29,11 @@ class JobAnalysis(Base):
             "eligibility_status IN "
             "('eligible', 'potential', 'uncertain', 'excluded')",
             name="ck_job_analysis_eligibility_status",
+        ),
+        UniqueConstraint(
+            "job_id",
+            "profile_id",
+            name="uq_job_analyses_job_profile",
         ),
         Index("ix_job_analyses_job_id", "job_id"),
         Index("ix_job_analyses_profile_id", "profile_id"),

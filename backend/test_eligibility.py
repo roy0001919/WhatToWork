@@ -80,15 +80,136 @@ test_cases = [
     {
         "name": "EU only unsupported",
         "description": "Remote - EU only",
-        "expected": "uncertain",
+        "expected": "excluded",
     },
     {
         "name": "Remote-first with US restriction",
         "description": "We are a remote-first company. Candidates must be based in the US.",
         "expected": "excluded",
     },
+    {
+        "name": "Philippines explicitly excluded",
+        "description": "We do not hire candidates based in the Philippines.",
+        "expected": "excluded",
+    },
+    {
+        "name": "Worldwide remote excluding Philippines",
+        "description": "Worldwide remote, excluding the Philippines.",
+        "expected": "excluded",
+    },
+    {
+        "name": "Philippines candidates not eligible",
+        "description": "Candidates based in the Philippines are not eligible for this position.",
+        "expected": "excluded",
+    },
+    {
+        "name": "EMEA remote unsupported",
+        "description": "This is a remote position available within EMEA.",
+        "expected": "uncertain",
+    },
 ]
 
+
+
+# Regional restriction tests
+test_cases.extend([
+    {
+        "name": "Philippines candidates not available",
+        "description": "This position is not available to candidates in the Philippines.",
+        "expected": "excluded",
+    },
+    {
+        "name": "North America only",
+        "description": "Remote in North America only.",
+        "expected": "excluded",
+    },
+    {
+        "name": "Worldwide except legally unsupported countries",
+        "description": (
+            "Worldwide remote except countries where we cannot "
+            "legally employ workers."
+        ),
+        "expected": "uncertain",
+    },
+{
+        "name": "North America only",
+        "description": "Remote in North America only.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "Europe only",
+        "description": "Remote in Europe only.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "EMEA only",
+        "description": "EMEA remote only.",
+        "current_country": "Philippines",
+        "expected": "uncertain",
+    },
+    {
+        "name": "APAC only",
+        "description": "Remote in APAC only.",
+        "current_country": "Philippines",
+        "expected": "potential",
+    },
+    {
+        "name": "LATAM only",
+        "description": "Remote in Latin America only.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "European Union only",
+        "description": "Remote in European Union only.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "North American candidates only",
+        "description": "We are hiring North American candidates only.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "European applicants only",
+        "description": "European applicants only.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "EMEA-based applicants only",
+        "description": "EMEA-based applicants only.",
+        "current_country": "Philippines",
+        "expected": "uncertain",
+    },
+    {
+        "name": "APAC-based candidates only",
+        "description": "APAC-based candidates only.",
+        "current_country": "Philippines",
+        "expected": "potential",
+    },
+    {
+        "name": "Candidates based in EMEA",
+        "description": "Candidates based in EMEA.",
+        "current_country": "Philippines",
+        "expected": "uncertain",
+    },
+    {
+        "name": "Applicants located in Europe",
+        "description": "Applicants located in Europe.",
+        "current_country": "Philippines",
+        "expected": "excluded",
+    },
+    {
+        "name": "Must reside in EMEA",
+        "description": "Applicants must reside in EMEA.",
+        "current_country": "Philippines",
+        "expected": "uncertain",
+    },
+])
 
 passed = 0
 

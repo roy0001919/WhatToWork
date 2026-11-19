@@ -4,6 +4,10 @@ from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.core.countries import (
+    extract_country_from_location,
+    normalize_country,
+)
 from app.schemas.job import JobCreate
 
 
@@ -33,6 +37,34 @@ def extract_text(html_content: str | None) -> str | None:
 class GreenhouseConnector:
 
     BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
+
+    @classmethod
+    def extract_country(cls, item: dict) -> str | None:
+        location = item.get("location") or {}
+        location_name = location.get("name")
+
+        # Prefer the actual job location.
+        country = extract_country_from_location(location_name)
+
+        if country:
+            return country
+
+        # Use office information only as a fallback.
+        offices = item.get("offices") or []
+        office_countries = set()
+
+        for office in offices:
+            office_name = office.get("name") or ""
+            country = normalize_country(office_name)
+
+            if country:
+                office_countries.add(country)
+
+        # Do not guess if multiple office countries exist.
+        if len(office_countries) == 1:
+            return next(iter(office_countries))
+
+        return None
 
     @classmethod
     def fetch_jobs(
@@ -66,8 +98,9 @@ class GreenhouseConnector:
                 f"Unable to connect to Greenhouse API: {exc.reason}"
             ) from exc
 
-    @staticmethod
+    @classmethod
     def normalize_job(
+        cls,
         item: dict,
         source_id: int,
     ) -> JobCreate:
@@ -80,6 +113,8 @@ class GreenhouseConnector:
             company=item.get("company_name") or "Unknown",
             description=extract_text(item.get("content")),
             location=location.get("name"),
+            country=cls.extract_country(item),
+            workplace_type=None,
             source_url=item.get("absolute_url"),
             apply_url=item.get("absolute_url"),
             posted_at=item.get("first_published"),
