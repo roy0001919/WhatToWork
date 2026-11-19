@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    container_name: whattowork-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: whattowork
+      POSTGRES_PASSWORD: dev_password_change_me
+      POSTGRES_DB: whattowork
+    ports:
+      - "5433:5432"
+    volumes:
+      - whattowork_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whattowork -d whattowork"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  whattowork_postgres_data:
