@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.schemas.job_analysis import JobAnalysisResponse
+from app.schemas.job_dashboard import (
+    DashboardAnalysisListResponse,
+    EligibilityStatus,
+)
 from app.services.job_analysis_service import JobAnalysisService
 from app.repositories.job_analysis_repository import JobAnalysisRepository
 
@@ -62,16 +66,33 @@ def analyze_jobs(
 
 @router.get(
     "/profiles/{profile_id}",
-    response_model=list[JobAnalysisResponse],
+    response_model=DashboardAnalysisListResponse,
 )
 def get_profile_analyses(
     profile_id: int,
+    eligibility_status: EligibilityStatus | None = Query(default=None),
+    search: str | None = Query(default=None, min_length=1, max_length=100),
+    active_only: bool = Query(default=True),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return JobAnalysisRepository.get_by_profile(
+    items, total = JobAnalysisRepository.get_dashboard_analyses(
         db=db,
         profile_id=profile_id,
+        eligibility_status=eligibility_status,
+        search=search,
+        active_only=active_only,
+        skip=skip,
+        limit=limit,
     )
+
+    return {
+        "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get(

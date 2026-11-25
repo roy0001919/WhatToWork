@@ -1,6 +1,7 @@
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, joinedload
 
+from app.models.job import Job
 from app.models.job_analysis import JobAnalysis
 from app.schemas.job_analysis import JobAnalysisCreate
 
@@ -89,6 +90,72 @@ class JobAnalysisRepository:
             )
         )
         return list(db.scalars(statement).all())
+
+    @staticmethod
+    def get_dashboard_analyses(
+        db: Session,
+        profile_id: int,
+        eligibility_status: str | None = None,
+        search: str | None = None,
+        active_only: bool = True,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[JobAnalysis], int]:
+        """
+        Retrieve job analyses with job information for Dashboard.
+        Returns (items, total_count).
+        """
+        statement = (
+            select(JobAnalysis)
+            .join(JobAnalysis.job)
+            .options(joinedload(JobAnalysis.job))
+            .where(JobAnalysis.profile_id == profile_id)
+        )
+
+        count_statement = (
+            select(func.count(JobAnalysis.id))
+            .join(JobAnalysis.job)
+            .where(JobAnalysis.profile_id == profile_id)
+        )
+
+        if eligibility_status:
+            statement = statement.where(
+                JobAnalysis.eligibility_status == eligibility_status
+            )
+            count_statement = count_statement.where(
+                JobAnalysis.eligibility_status == eligibility_status
+            )
+
+        if active_only:
+            statement = statement.where(Job.is_active.is_(True))
+            count_statement = count_statement.where(
+                Job.is_active.is_(True)
+            )
+
+        if search:
+            search_pattern = f"%{search.strip()}%"
+            search_filter = or_(
+                Job.title.ilike(search_pattern),
+                Job.company.ilike(search_pattern),
+            )
+            statement = statement.where(search_filter)
+            count_statement = count_statement.where(search_filter)
+
+        total = db.scalar(count_statement) or 0
+
+        statement = (
+            statement
+            .order_by(
+                JobAnalysis.analyzed_at.desc(),
+                JobAnalysis.id.desc(),
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+
+        items = list(db.scalars(statement).all())
+
+        return items, total
 
     @staticmethod
     def get_by_job(
