@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.connectors.greenhouse import GreenhouseConnector
+from app.connectors.registry import get_connector
 from app.models.job_source import JobSource
 from app.services.job_service import JobService
 
@@ -24,21 +24,11 @@ class JobSyncService:
                 f"Enabled job source not found: {source_id}"
             )
 
-        if source.source_type != "greenhouse":
-            raise ValueError(
-                f"Unsupported source type: {source.source_type}"
-            )
+        connector = get_connector(source.source_type)
 
-        board_token = (source.source_metadata or {}).get("board_token")
-
-        if not board_token:
-            raise ValueError(
-                f"Missing Greenhouse board token for source {source_id}"
-            )
-
-        jobs = GreenhouseConnector.fetch_and_normalize(
-            board_token=board_token,
+        jobs = connector.fetch_and_normalize(
             source_id=source.id,
+            source_metadata=source.source_metadata or {},
         )
 
         imported_count = 0

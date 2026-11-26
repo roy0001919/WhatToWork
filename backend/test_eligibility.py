@@ -5,7 +5,7 @@ test_cases = [
     {
         "name": "US work authorization required",
         "description": "Must be authorized to work in the United States.",
-        "expected": "excluded",
+        "expected": "uncertain",
     },
     {
         "name": "US location restriction",

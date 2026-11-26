@@ -20,8 +20,6 @@ class EligibilityAnalyzer:
         "European Union": ["European Union", "EU"],
     }
 
-    # Geographic mapping for currently supported countries.
-    # These mappings are intentionally conservative and incomplete.
     REGION_COUNTRIES = {
         "North America": ["United States", "Canada"],
         "Europe": ["United Kingdom"],
@@ -158,8 +156,6 @@ class EligibilityAnalyzer:
                 rf"\bapplicants? must reside in (?:the )?{country_pattern}\b",
                 rf"\bonly (?:applicants?|candidates?) located in (?:the )?{country_pattern}\b",
                 rf"\b{country_pattern}-based (?:applicants?|candidates?) only\b",
-                rf"\bmust be (?:legally )?authorized to work in (?:the )?{country_pattern}\b",
-                rf"\bmust have the right to work in (?:the )?{country_pattern}\b",
             ]
 
             for pattern in patterns:
@@ -173,6 +169,46 @@ class EligibilityAnalyzer:
                     })
 
         return evidence
+
+    @classmethod
+    def _find_work_authorization_requirements(cls, text: str) -> list[dict]:
+        evidence = []
+
+        patterns = [
+            r"\b(?:applicants?|candidates?)\s+must\s+be\s+(?:legally\s+)?eligible\s+to\s+work\s+in\s+(?:the\s+)?([A-Za-z][A-Za-z ]+)",
+            r"\bmust\s+be\s+(?:legally\s+)?authorized\s+to\s+work\s+in\s+(?:the\s+)?([A-Za-z][A-Za-z ]+)",
+            r"\bmust\s+have\s+the\s+right\s+to\s+work\s+in\s+(?:the\s+)?([A-Za-z][A-Za-z ]+)",
+        ]
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                countries = cls._find_countries(match.group(1))
+
+                for country in countries:
+                    evidence.append({
+                        "type": "work_authorization_requirement",
+                        "country": country,
+                        "text": match.group(0),
+                    })
+
+        return evidence
+
+    @classmethod
+    def _has_no_sponsorship(cls, text: str) -> bool:
+        patterns = [
+            r"\bunable to support sponsorship\b",
+            r"\b(?:cannot|can't|will not|do not|does not) sponsor\b",
+            r"\bno visa sponsorship\b",
+            r"\bnot able to sponsor\b",
+            r"\bcannot provide sponsorship\b",
+            r"\bwill not provide sponsorship\b",
+            r"\bnot provide visa sponsorship\b",
+        ]
+
+        return any(
+            re.search(pattern, text, re.IGNORECASE)
+            for pattern in patterns
+        )
 
     @classmethod
     def _find_region_restrictions(cls, text: str) -> list[dict]:
@@ -227,10 +263,222 @@ class EligibilityAnalyzer:
         return evidence
 
     @classmethod
+    def _analyze_job_location(
+        cls,
+        location: str | None,
+        country: str | None,
+        workplace_type: str | None,
+        user_country: str,
+    ) -> dict | None:
+        location_text = re.sub(r"\s+", " ", location or "").strip()
+        workplace = (workplace_type or "").strip().lower()
+
+        if not location_text:
+            return None
+
+        remote_segments = re.findall(
+            r"(?:^|;)\s*remote\s*[-:]\s*([^;]+)",
+            location_text,
+            re.IGNORECASE,
+        )
+
+        if remote_segments:
+            # Search the entire location field, including all
+            # semicolon-separated countries.
+            remote_countries = list(dict.fromkeys(
+                cls._find_countries(location_text)
+            ))
+
+            remote_regions = []
+
+            for region, aliases in cls.REGION_ALIASES.items():
+                for alias in aliases:
+                    pattern = (
+                        r"(?<!\w)"
+                        + re.escape(alias)
+                        + r"(?!\w)"
+                    )
+
+                    if re.search(
+                        pattern,
+                        location_text,
+                        re.IGNORECASE,
+                    ):
+                        remote_regions.append(region)
+                        break
+
+            remote_regions = list(dict.fromkeys(remote_regions))
+
+            evidence = [{
+                "type": "remote_location",
+                "text": location_text,
+                "countries": remote_countries,
+                "regions": remote_regions,
+            }]
+
+            # Explicit inclusion of the candidate's country.
+            if user_country in remote_countries:
+                return {
+                    "status": "potential",
+                    "confidence": 0.85,
+                    "reason": (
+                        f"The remote location list explicitly includes "
+                        f"{user_country}, but employment arrangements "
+                        "and work authorization still need confirmation."
+                    ),
+                    "evidence": evidence,
+                }
+
+            # EU-only or EU-restricted locations exclude the Philippines.
+            if "European Union" in remote_regions:
+                return {
+                    "status": "excluded",
+                    "confidence": 0.9,
+                    "reason": (
+                        "The remote position is listed for the European "
+                        "Union, which does not include "
+                        f"{user_country}."
+                    ),
+                    "evidence": evidence,
+                }
+
+            if remote_countries:
+                return {
+                    "status": "excluded",
+                    "confidence": 0.9,
+                    "reason": (
+                        f"The listed remote locations do not include "
+                        f"{user_country}."
+                    ),
+                    "evidence": evidence,
+                }
+
+            return {
+                "status": "uncertain",
+                "confidence": 0.4,
+                "reason": (
+                    "The job has a remote location label, but its "
+                    "eligible countries could not be identified."
+                ),
+                "evidence": evidence,
+            }
+
+        # Remote jobs with multiple explicitly listed countries.
+        # Some job boards omit the "Remote -" prefix.
+        if (
+            not remote_segments
+            and workplace in {
+                "remote",
+                "fully remote",
+                "remote-first",
+                "remote first",
+            }
+        ):
+            listed_countries = list(dict.fromkeys(
+                cls._find_countries(location_text)
+            ))
+
+            if len(listed_countries) >= 2:
+                evidence = [{
+                    "type": "remote_location",
+                    "text": location_text,
+                    "countries": listed_countries,
+                }]
+
+                if user_country in listed_countries:
+                    return {
+                        "status": "potential",
+                        "confidence": 0.85,
+                        "reason": (
+                            f"The remote location list explicitly includes "
+                            f"{user_country}, but employment arrangements "
+                            "and work authorization still need confirmation."
+                        ),
+                        "evidence": evidence,
+                    }
+
+                return {
+                    "status": "excluded",
+                    "confidence": 0.9,
+                    "reason": (
+                        f"The listed remote locations do not include "
+                        f"{user_country}."
+                    ),
+                    "evidence": evidence,
+                }
+
+        # Explicit "Anywhere in <country>" location.
+        anywhere_match = re.search(
+            r"\banywhere\s+in\s+(.+?)(?:[;,.]|$)",
+            location_text,
+            re.IGNORECASE,
+        )
+
+        if anywhere_match:
+            countries = cls._find_countries(anywhere_match.group(1))
+
+            if countries:
+                evidence = [{
+                    "type": "country_specific_location",
+                    "text": anywhere_match.group(0),
+                    "countries": countries,
+                }]
+
+                if user_country in countries:
+                    return {
+                        "status": "potential",
+                        "confidence": 0.85,
+                        "reason": (
+                            f"The listed location includes {user_country}, "
+                            "but employment arrangements and work "
+                            "authorization still need confirmation."
+                        ),
+                        "evidence": evidence,
+                    }
+
+                return {
+                    "status": "excluded",
+                    "confidence": 0.9,
+                    "reason": (
+                        f"The position is listed as available in "
+                        f"{', '.join(countries)}, not {user_country}."
+                    ),
+                    "evidence": evidence,
+                }
+
+        normalized_job_country = cls._normalize_country(country or "")
+
+        if (
+            workplace in {"onsite", "on-site", "hybrid"}
+            and normalized_job_country
+            and normalized_job_country != user_country
+        ):
+            return {
+                "status": "excluded",
+                "confidence": 0.9,
+                "reason": (
+                    f"This is a {workplace} position associated with "
+                    f"{normalized_job_country}, while the candidate is "
+                    f"based in {user_country}."
+                ),
+                "evidence": [{
+                    "type": "workplace_location",
+                    "country": normalized_job_country,
+                    "location": location_text,
+                    "workplace_type": workplace,
+                }],
+            }
+
+        return None
+
+    @classmethod
     def analyze(
         cls,
         description: str,
         current_country: str,
+        location: str | None = None,
+        country: str | None = None,
+        workplace_type: str | None = None,
     ) -> dict:
         text = re.sub(r"\s+", " ", description or "").strip()
         normalized = text.lower()
@@ -283,7 +531,48 @@ class EligibilityAnalyzer:
                 }],
             }
 
-        # 3. Check all explicitly allowed remote work locations.
+        # 3. Work authorization and visa sponsorship requirements.
+        work_authorization = (
+            cls._find_work_authorization_requirements(text)
+        )
+
+        foreign_work_requirements = [
+            item for item in work_authorization
+            if item["country"] != user_country
+        ]
+
+        if foreign_work_requirements:
+            if cls._has_no_sponsorship(text):
+                return {
+                    "status": "excluded",
+                    "confidence": 0.95,
+                    "reason": (
+                        "The position requires work authorization in "
+                        f"{foreign_work_requirements[0]['country']} "
+                        "and explicitly states that visa sponsorship "
+                        "is unavailable."
+                    ),
+                    "evidence": (
+                        foreign_work_requirements
+                        + [{
+                            "type": "no_sponsorship",
+                            "text": text,
+                        }]
+                    ),
+                }
+
+            return {
+                "status": "uncertain",
+                "confidence": 0.5,
+                "reason": (
+                    "The position requires work authorization in "
+                    f"{foreign_work_requirements[0]['country']}, "
+                    "but its visa sponsorship policy is unclear."
+                ),
+                "evidence": foreign_work_requirements,
+            }
+
+        # 3. Explicit allowed remote work locations in description.
         allowed_locations = cls._find_explicit_allowed_countries(text)
 
         if allowed_locations:
@@ -316,7 +605,7 @@ class EligibilityAnalyzer:
                 "evidence": allowed_locations,
             }
 
-        # 4. Check explicit country restrictions.
+        # 4. Explicit country restrictions in description.
         restrictions = cls._find_country_restrictions(text)
 
         other_country_restrictions = [
@@ -348,11 +637,21 @@ class EligibilityAnalyzer:
                 "evidence": restrictions,
             }
 
-        # 5. Check regional restrictions against country mappings.
+        # 5. Analyze structured job location fields.
+        location_result = cls._analyze_job_location(
+            location=location,
+            country=country,
+            workplace_type=workplace_type,
+            user_country=user_country,
+        )
+
+        if location_result:
+            return location_result
+
+        # 6. Check regional restrictions against country mappings.
         region_restrictions = cls._find_region_restrictions(text)
 
         if region_restrictions:
-
             if len(region_restrictions) > 1:
                 regions = ", ".join(
                     item["region"] for item in region_restrictions
@@ -405,7 +704,7 @@ class EligibilityAnalyzer:
                 "evidence": region_restrictions,
             }
 
-        # 6. Worldwide remote is considered only after exclusions.
+        # 7. Worldwide remote is considered only after exclusions.
         for pattern in cls.WORLDWIDE_PATTERNS:
             match = re.search(pattern, normalized)
 
@@ -424,7 +723,7 @@ class EligibilityAnalyzer:
                     }],
                 }
 
-        # 7. No explicit eligibility evidence.
+        # 8. No explicit eligibility evidence.
         remote_first = re.search(
             r"\bremote[- ]first\b|\bremote friendly\b",
             normalized,

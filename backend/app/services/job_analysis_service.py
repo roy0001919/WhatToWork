@@ -17,7 +17,6 @@ class JobAnalysisService:
         profile_id: int,
     ) -> JobAnalysis:
 
-        # 1. Retrieve job
         job = JobRepository.get_by_id(
             db=db,
             job_id=job_id,
@@ -26,7 +25,6 @@ class JobAnalysisService:
         if job is None:
             raise ValueError(f"Job not found: {job_id}")
 
-        # 2. Retrieve user profile
         profile = UserProfileRepository.get_by_id(
             db=db,
             profile_id=profile_id,
@@ -38,13 +36,14 @@ class JobAnalysisService:
         if not profile.current_country:
             raise ValueError("User profile current_country is required")
 
-        # 3. Run eligibility analysis
         result = EligibilityAnalyzer.analyze(
             description=job.description or "",
             current_country=profile.current_country,
+            location=job.location,
+            country=job.country,
+            workplace_type=job.workplace_type,
         )
 
-        # 4. Build analysis record
         analysis_data = JobAnalysisCreate(
             job_id=job.id,
             profile_id=profile.id,
@@ -59,16 +58,20 @@ class JobAnalysisService:
                     "company": job.company,
                     "source_url": job.source_url,
                 },
+                "job": {
+                    "location": job.location,
+                    "country": job.country,
+                    "workplace_type": job.workplace_type,
+                },
                 "profile": {
                     "profile_id": profile.id,
                     "current_country": profile.current_country,
                 },
             },
             analysis_model="rule-based",
-            prompt_version="eligibility-v1",
+            prompt_version="eligibility-v2",
         )
 
-        # 5. Create or update analysis
         return JobAnalysisRepository.upsert(
             db=db,
             data=analysis_data,
@@ -82,7 +85,6 @@ class JobAnalysisService:
         limit: int = 100,
     ) -> dict:
 
-        # 1. Validate profile
         profile = UserProfileRepository.get_by_id(
             db=db,
             profile_id=profile_id,
@@ -94,7 +96,6 @@ class JobAnalysisService:
         if not profile.current_country:
             raise ValueError("User profile current_country is required")
 
-        # 2. Retrieve active jobs
         jobs = JobRepository.get_all(
             db=db,
             skip=skip,
@@ -104,7 +105,6 @@ class JobAnalysisService:
         successful = []
         failed = []
 
-        # 3. Analyze jobs one by one
         for job in jobs:
             try:
                 analysis = JobAnalysisService.analyze_job(
@@ -127,7 +127,6 @@ class JobAnalysisService:
                     "error": str(error),
                 })
 
-        # 4. Return batch summary
         return {
             "profile_id": profile_id,
             "total_jobs": len(jobs),

@@ -1,28 +1,39 @@
 import json
 from html import unescape
-from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from app.core.countries import (
-    extract_country_from_location,
-    normalize_country,
-)
+from app.connectors.base import BaseJobConnector
+from app.core.countries import extract_country_from_location, normalize_country
 from app.schemas.job import JobCreate
 
 
-class HTMLTextParser(HTMLParser):
+class HTMLTextParser:
     def __init__(self):
-        super().__init__()
-        self.parts = []
+        from html.parser import HTMLParser
 
-    def handle_data(self, data):
-        text = data.strip()
-        if text:
-            self.parts.append(text)
+        class Parser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.parts = []
+
+            def handle_data(self, data):
+                self.parts.append(data)
+
+            def get_text(self):
+                return " ".join(
+                    part.strip()
+                    for part in self.parts
+                    if part.strip()
+                )
+
+        self.parser = Parser()
+
+    def feed(self, content: str):
+        self.parser.feed(content)
 
     def get_text(self):
-        return " ".join(self.parts)
+        return self.parser.get_text()
 
 
 def extract_text(html_content: str | None) -> str | None:
@@ -34,7 +45,7 @@ def extract_text(html_content: str | None) -> str | None:
     return parser.get_text()
 
 
-class GreenhouseConnector:
+class GreenhouseConnector(BaseJobConnector):
 
     BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
 
@@ -43,13 +54,11 @@ class GreenhouseConnector:
         location = item.get("location") or {}
         location_name = location.get("name")
 
-        # Prefer the actual job location.
         country = extract_country_from_location(location_name)
 
         if country:
             return country
 
-        # Use office information only as a fallback.
         offices = item.get("offices") or []
         office_countries = set()
 
@@ -60,7 +69,6 @@ class GreenhouseConnector:
             if country:
                 office_countries.add(country)
 
-        # Do not guess if multiple office countries exist.
         if len(office_countries) == 1:
             return next(iter(office_countries))
 
@@ -124,10 +132,25 @@ class GreenhouseConnector:
     @classmethod
     def fetch_and_normalize(
         cls,
-        board_token: str,
         source_id: int,
+        source_metadata: dict | None = None,
+        board_token: str | None = None,
     ) -> list[JobCreate]:
-        raw_jobs = cls.fetch_jobs(board_token)
+        """
+        Fetch and normalize Greenhouse jobs.
+
+        Supports both the new source_metadata interface
+        and the previous board_token argument.
+        """
+        metadata = source_metadata or {}
+        token = board_token or metadata.get("board_token")
+
+        if not token:
+            raise ValueError(
+                "Missing Greenhouse board_token in source_metadata"
+            )
+
+        raw_jobs = cls.fetch_jobs(token)
 
         return [
             cls.normalize_job(item, source_id)
