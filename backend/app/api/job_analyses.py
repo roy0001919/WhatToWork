@@ -47,7 +47,7 @@ def analyze_job(
 def analyze_jobs(
     profile_id: int,
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=1, ge=1, le=5),
     db: Session = Depends(get_db),
 ):
     try:

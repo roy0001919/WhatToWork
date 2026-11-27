@@ -156,6 +156,7 @@ class EligibilityAnalyzer:
                 rf"\bapplicants? must reside in (?:the )?{country_pattern}\b",
                 rf"\bonly (?:applicants?|candidates?) located in (?:the )?{country_pattern}\b",
                 rf"\b{country_pattern}-based (?:applicants?|candidates?) only\b",
+                rf"\b(?:the )?{country_pattern}\s+only\b",
             ]
 
             for pattern in patterns:
@@ -247,6 +248,10 @@ class EligibilityAnalyzer:
 
                 rf"\bmust (?:reside|be based|be located)\s+in\s+"
                 rf"(?:the )?{region_pattern}\b",
+                # Remote positions restricted to a region.
+                rf"\b(?:100%\s+)?remote\s+"
+                rf"(?:in|across|within)\s+"
+                rf"(?:the )?{region_pattern}(?:\s+only)?\b",
             ]
 
             for pattern in patterns:
@@ -479,8 +484,14 @@ class EligibilityAnalyzer:
         location: str | None = None,
         country: str | None = None,
         workplace_type: str | None = None,
+        title: str | None = None,
     ) -> dict:
-        text = re.sub(r"\s+", " ", description or "").strip()
+        combined_text = " ".join(
+            part for part in [title, description]
+            if part and part.strip()
+        )
+
+        text = re.sub(r"\s+", " ", combined_text).strip()
         normalized = text.lower()
 
         user_country = cls._normalize_country(current_country)

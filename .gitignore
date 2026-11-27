@@ -1,0 +1,41 @@
+# Environment variables
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.bak
+*.bak.*
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Database backups
+*.dump
+*.sql
+
+# IDE
+.idea/
+.vscode/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# OS
+.DS_Store
+
+# Temporary job analysis artifacts
+backend/other_python_review.csv
+backend/analyze_python_jobs.py
+backend/inspect_other_python_context.py
+backend/inspect_other_python_jobs.py
+backend/review_python_jobs.py
+
+# Local IDE files
+.idea/

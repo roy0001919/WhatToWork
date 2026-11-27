@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -8,6 +9,9 @@ from app.schemas.job_source import (
 )
 from app.services.job_source_service import JobSourceService
 from app.services.job_sync_service import JobSyncService
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -80,6 +84,11 @@ def sync_job_source(
             detail=str(exc),
         ) from exc
     except Exception as exc:
+        logger.exception(
+            "Job source synchronization failed (source_id=%s)",
+            source_id,
+        )
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Job source synchronization failed.",
