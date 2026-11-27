@@ -1476,3 +1476,257 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+.language-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.language-menu-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid #e5e9f2;
+  border-radius: 10px;
+  color: #65738a;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.language-menu-button:hover {
+  color: #5267b5;
+  border-color: #cbd4f5;
+  background: #f7f8ff;
+}
+
+.language-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 100;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid #e8ebf2;
+  border-radius: 11px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(35, 48, 75, 0.14);
+}
+
+.language-menu-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 11px;
+  border: none;
+  border-radius: 7px;
+  color: #526078;
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.language-menu-option:hover {
+  background: #f5f6fb;
+}
+
+.language-menu-option.active {
+  color: #5267b5;
+  background: #f0f2ff;
+  font-weight: 650;
+}
+
+
+/* AI recommendation entry */
+.stats-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ai-recommendation-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border: 1px solid #dfe4ff;
+  border-radius: 10px;
+  background: #f7f8ff;
+  color: #586dcc;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ai-recommendation-link:hover {
+  background: #edf0ff;
+  border-color: #bdc8ff;
+}
+
+@media (max-width: 640px) {
+  .stats-heading-actions {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+
+/* AI Recommended Jobs */
+.recommended-section {
+  margin-top: 32px;
+}
+
+.recommended-heading {
+  margin-bottom: 16px;
+}
+
+.recommended-count {
+  color: #778398;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.recommended-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.recommended-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 17px;
+  text-align: left;
+  border: 1px solid #e9ebf2;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.recommended-card:hover {
+  border-color: #cbd3f7;
+  box-shadow: 0 6px 20px #26385b0d;
+  transform: translateY(-2px);
+}
+
+.recommended-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.recommended-decision {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 20px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.decision-apply {
+  color: #238765;
+  background: #e8f7f0;
+}
+
+.decision-consider {
+  color: #a77826;
+  background: #fff5e3;
+}
+
+.recommended-score {
+  color: #5367bf;
+  font-size: 19px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.recommended-score small {
+  color: #8992a4;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.recommended-job-title {
+  overflow: hidden;
+  color: #202b42;
+  font-size: 14px;
+  font-weight: 720;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.recommended-company {
+  margin-top: 4px;
+  color: #778398;
+  font-size: 11px;
+}
+
+.recommended-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.recommended-meta > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #778398;
+  font-size: 10px;
+}
+
+.recommended-reason {
+  display: -webkit-box;
+  min-height: 36px;
+  overflow: hidden;
+  margin: 13px 0;
+  color: #778398;
+  font-size: 10px;
+  line-height: 1.65;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.recommended-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 10px;
+  color: #6479dc;
+  border-top: 1px solid #f0f1f5;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.recommended-empty {
+  padding: 25px;
+  color: #8992a4;
+  border: 1px dashed #dfe3ec;
+  border-radius: 11px;
+  background: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .recommended-grid {
+    grid-template-columns: 1fr;
+  }
+}
