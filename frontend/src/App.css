@@ -1266,3 +1266,213 @@
     gap: 12px;
   }
 }
+
+
+/* Gemini AI dashboard additions */
+.ai-stat-card {
+  border-color: #dfe4ff;
+  background: linear-gradient(145deg, #fff, #f7f8ff);
+}
+
+.ai-stat-card .stat-icon {
+  color: #6479dc;
+  background: #edf0ff;
+}
+
+.ai-match-score {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #5267c4;
+  background: #eef0ff;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.analysis-type-pill {
+  display: inline-flex;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.analysis-genai {
+  color: #5267c4;
+  background: #eef0ff;
+}
+
+.analysis-legacy {
+  color: #778195;
+  background: #f0f2f5;
+}
+
+.ai-detail-section {
+  background: linear-gradient(180deg, #fbfbff, #fff);
+}
+
+.ai-score-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 17px;
+}
+
+.ai-score-grid > div {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid #e9ecf8;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.ai-score-grid span,
+.ai-assessment-item > div > strong {
+  color: #8b95a8;
+  font-size: 9px;
+}
+
+.ai-score-grid strong {
+  color: #5267c4;
+  font-size: 22px;
+}
+
+.ai-assessment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-assessment-item {
+  padding: 11px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ai-assessment-item > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-match-status {
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: #69758b;
+  background: #f0f2f6;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ai-match-status.status-good {
+  color: #247a55;
+  background: #e8f6ee;
+}
+
+.ai-match-status.status-partial {
+  color: #98702b;
+  background: #fff5df;
+}
+
+.ai-match-status.status-poor {
+  color: #a34e58;
+  background: #fff0f1;
+}
+
+.ai-assessment-item p,
+.ai-recommendation p,
+.ai-extra-fact p {
+  margin: 7px 0 0;
+  color: #68748a;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.ai-recommendation {
+  display: grid;
+  gap: 8px;
+  margin: 15px 0;
+  padding: 13px;
+  border: 1px solid #e9ecf8;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.ai-recommendation > strong {
+  color: #6575a8;
+  font-size: 13px;
+}
+
+.ai-recommendation .recommendation-apply {
+  color: #247a55;
+}
+
+.ai-recommendation .recommendation-consider {
+  color: #98702b;
+}
+
+.ai-recommendation .recommendation-skip {
+  color: #a34e58;
+}
+
+.ai-skill-group {
+  display: grid;
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.ai-skill-group > strong,
+.ai-extra-fact > strong {
+  color: #536077;
+  font-size: 10px;
+}
+
+.skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-tag {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.skill-matched {
+  color: #247a55;
+  background: #e8f6ee;
+}
+
+.skill-missing {
+  color: #a34e58;
+  background: #fff0f1;
+}
+
+.ai-extra-fact {
+  margin-top: 15px;
+  padding: 11px;
+  border-radius: 8px;
+  background: #f7f8fb;
+}
+
+.ai-extra-fact ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 17px;
+  color: #68748a;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .ai-score-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -100,11 +100,19 @@ class JobAnalysisRepository:
         active_only: bool = True,
         skip: int = 0,
         limit: int = 20,
+        analysis_type: str = "all",
     ) -> tuple[list[JobAnalysis], int]:
         """
         Retrieve job analyses with job information for Dashboard.
-        Returns (items, total_count).
+
+        analysis_type:
+            all         - All analyses
+            genai       - Analyses containing GenAI results
+            eligibility - Eligibility-only analyses
         """
+        if analysis_type not in {"all", "genai", "eligibility"}:
+            raise ValueError(f"Invalid analysis_type: {analysis_type}")
+
         statement = (
             select(JobAnalysis)
             .join(JobAnalysis.job)
@@ -117,6 +125,16 @@ class JobAnalysisRepository:
             .join(JobAnalysis.job)
             .where(JobAnalysis.profile_id == profile_id)
         )
+
+        if analysis_type == "genai":
+            analysis_filter = JobAnalysis.structured_result.has_key("genai")
+            statement = statement.where(analysis_filter)
+            count_statement = count_statement.where(analysis_filter)
+
+        elif analysis_type == "eligibility":
+            analysis_filter = ~JobAnalysis.structured_result.has_key("genai")
+            statement = statement.where(analysis_filter)
+            count_statement = count_statement.where(analysis_filter)
 
         if eligibility_status:
             statement = statement.where(

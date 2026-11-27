@@ -73,6 +73,10 @@ def get_profile_analyses(
     eligibility_status: EligibilityStatus | None = Query(default=None),
     search: str | None = Query(default=None, min_length=1, max_length=100),
     active_only: bool = Query(default=True),
+    analysis_type: str = Query(
+        default="all",
+        pattern="^(all|genai|eligibility)$",
+    ),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -85,6 +89,7 @@ def get_profile_analyses(
         active_only=active_only,
         skip=skip,
         limit=limit,
+        analysis_type=analysis_type,
     )
 
     return {

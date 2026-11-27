@@ -21,6 +21,38 @@ import {
 } from 'lucide-react'
 
 type EligibilityStatus = 'eligible' | 'potential' | 'uncertain' | 'excluded'
+type AnalysisType = 'all' | 'genai' | 'eligibility'
+
+interface MatchAssessment {
+  status?: string
+  reason?: string
+}
+
+interface GenAIResult {
+  job_category?: string
+  technical_match_score?: number
+  overall_match_score?: number
+  experience_match?: MatchAssessment
+  seniority_match?: MatchAssessment
+  leadership_match?: MatchAssessment
+  required_skills?: string[]
+  preferred_skills?: string[]
+  matched_required_skills?: string[]
+  missing_required_skills?: string[]
+  matched_preferred_skills?: string[]
+  missing_preferred_skills?: string[]
+  matched_skills?: string[]
+  missing_skills?: string[]
+  work_arrangement?: string
+  salary_analysis?: {
+    status?: string
+    reason?: string
+  }
+  application_recommendation?: string
+  recommendation_reason?: string
+  summary?: string
+  security_requirements?: string[]
+}
 
 interface Evidence {
   type: string
@@ -59,6 +91,11 @@ interface DashboardAnalysis {
       evidence?: Evidence[]
       confidence?: number
     }
+    genai?: GenAIResult
+    recommendation?: {
+      decision?: string
+      reason?: string
+    } | null
   }
   analyzed_at: string
   job: DashboardJob
@@ -147,9 +184,11 @@ function App() {
   })
 
   const [totalJobs, setTotalJobs] = useState(0)
+  const [genaiTotal, setGenaiTotal] = useState(0)
   const [listTotal, setListTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<EligibilityStatus | 'all'>('all')
+  const [analysisType, setAnalysisType] = useState<AnalysisType>('all')
   const [page, setPage] = useState(0)
 
   const [loading, setLoading] = useState(true)
@@ -164,17 +203,26 @@ function App() {
       setStatsLoading(true)
 
       try {
-        const results = await Promise.all(
-          statusOrder.map(async (status) => {
-            const params = new URLSearchParams({
-              eligibility_status: status,
+        const [results, genaiData] = await Promise.all([
+          Promise.all(
+            statusOrder.map(async (status) => {
+              const params = new URLSearchParams({
+                eligibility_status: status,
+                skip: '0',
+                limit: '1',
+              })
+              const data = await fetchAnalyses(params)
+              return [status, data.total] as const
+            }),
+          ),
+          fetchAnalyses(
+            new URLSearchParams({
+              analysis_type: 'genai',
               skip: '0',
               limit: '1',
-            })
-            const data = await fetchAnalyses(params)
-            return [status, data.total] as const
-          }),
-        )
+            }),
+          ),
+        ])
 
         if (cancelled) return
 
@@ -185,6 +233,7 @@ function App() {
 
         setCounts(nextCounts)
         setTotalJobs(results.reduce((sum, [, count]) => sum + count, 0))
+        setGenaiTotal(genaiData.total)
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -219,6 +268,8 @@ function App() {
         skip: String(page * PAGE_SIZE),
         limit: String(PAGE_SIZE),
       })
+
+      params.set('analysis_type', analysisType)
 
       if (statusFilter !== 'all') {
         params.set('eligibility_status', statusFilter)
@@ -257,7 +308,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [page, search, statusFilter])
+  }, [page, search, statusFilter, analysisType])
 
   const filteredTotal = listTotal
 
@@ -273,6 +324,12 @@ function App() {
     setPage(0)
   }
 
+  function handleAnalysisTypeChange(value: AnalysisType) {
+    setAnalysisType(value)
+    setPage(0)
+  }
+
+  const selectedGenAI = selectedAnalysis?.structured_result?.genai
   const selectedEvidence =
     selectedAnalysis?.structured_result?.eligibility?.evidence ?? []
 
@@ -403,6 +460,22 @@ function App() {
                   <div className="stat-label">{statusConfig[status].description}</div>
                 </button>
               ))}
+              <button
+                className={`stat-card ai-stat-card ${analysisType === 'genai' ? 'stat-selected' : ''}`}
+                onClick={() => handleAnalysisTypeChange('genai')}
+              >
+                <div className="stat-topline">
+                  <span className="stat-icon"><Activity size={18} /></span>
+                  <span className="stat-trend">GEMINI AI</span>
+                </div>
+                <div className="stat-value">{statsLoading ? '—' : genaiTotal}</div>
+                <div className="stat-label">
+                  AI-analyzed opportunities
+                  {!statsLoading && totalJobs > 0
+                    ? ` · ${Math.round((genaiTotal / totalJobs) * 100)}% coverage`
+                    : ''}
+                </div>
+              </button>
             </div>
           </section>
 
@@ -456,6 +529,21 @@ function App() {
                 </select>
                 <Filter size={14} />
               </div>
+
+              <div className="filter-control">
+                <Activity size={16} />
+                <select
+                  value={analysisType}
+                  onChange={(event) =>
+                    handleAnalysisTypeChange(event.target.value as AnalysisType)
+                  }
+                  aria-label="Filter by analysis type"
+                >
+                  <option value="all">All analyses</option>
+                  <option value="genai">Gemini AI</option>
+                  <option value="eligibility">Eligibility only</option>
+                </select>
+              </div>
             </div>
 
             {error && (
@@ -479,6 +567,8 @@ function App() {
                     <th>LOCATION</th>
                     <th>WORK TYPE</th>
                     <th>ELIGIBILITY</th>
+                    <th>AI MATCH</th>
+                    <th>ANALYSIS</th>
                     <th>POSTED</th>
                     <th />
                   </tr>
@@ -486,14 +576,14 @@ function App() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="table-message">
+                      <td colSpan={8} className="table-message">
                         <div className="loading-spinner" />
                         Loading opportunities...
                       </td>
                     </tr>
                   ) : analyses.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="table-message">
+                      <td colSpan={8} className="table-message">
                         <div className="empty-state">
                           <Search size={25} />
                           <strong>No opportunities found</strong>
@@ -537,6 +627,20 @@ function App() {
                           <span className={`status-pill ${statusConfig[analysis.eligibility_status].className}`}>
                             <span className="status-indicator" />
                             {statusConfig[analysis.eligibility_status].label}
+                          </span>
+                        </td>
+                        <td>
+                          {analysis.structured_result.genai?.technical_match_score != null ? (
+                            <span className="ai-match-score">
+                              {analysis.structured_result.genai.technical_match_score}%
+                            </span>
+                          ) : (
+                            <span className="muted-copy">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`analysis-type-pill ${analysis.structured_result.genai ? 'analysis-genai' : 'analysis-legacy'}`}>
+                            {analysis.structured_result.genai ? 'GenAI' : 'Eligibility'}
                           </span>
                         </td>
                         <td className="date-cell">{formatDate(analysis.job.posted_at)}</td>
@@ -640,6 +744,91 @@ function App() {
                 </div>
               )}
             </div>
+
+            {selectedGenAI && (
+              <div className="detail-section ai-detail-section">
+                <h4>Gemini AI assessment</h4>
+
+                <div className="ai-score-grid">
+                  <div>
+                    <span>Technical match</span>
+                    <strong>{selectedGenAI.technical_match_score ?? '—'}{selectedGenAI.technical_match_score != null ? '%' : ''}</strong>
+                  </div>
+                  <div>
+                    <span>Overall match</span>
+                    <strong>{selectedGenAI.overall_match_score ?? '—'}{selectedGenAI.overall_match_score != null ? '%' : ''}</strong>
+                  </div>
+                </div>
+
+                <div className="ai-assessment-list">
+                  {([
+                    ['Experience', selectedGenAI.experience_match],
+                    ['Seniority', selectedGenAI.seniority_match],
+                    ['Leadership', selectedGenAI.leadership_match],
+                  ] as const).map(([label, result]) => result && (
+                    <div className="ai-assessment-item" key={label}>
+                      <div>
+                        <strong>{label}</strong>
+                        <span className={`ai-match-status status-${result.status ?? 'unknown'}`}>
+                          {result.status ?? 'unknown'}
+                        </span>
+                      </div>
+                      {result.reason && <p>{result.reason}</p>}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="ai-recommendation">
+                  <span className="detail-label">AI APPLICATION RECOMMENDATION</span>
+                  <strong className={`recommendation-${(selectedGenAI.application_recommendation ?? 'unknown').toLowerCase()}`}>
+                    {(selectedGenAI.application_recommendation ?? 'Not available').toUpperCase()}
+                  </strong>
+                  {selectedGenAI.recommendation_reason && (
+                    <p>{selectedGenAI.recommendation_reason}</p>
+                  )}
+                </div>
+
+                <div className="ai-skill-group">
+                  <strong>Matched required skills</strong>
+                  <div className="skill-tags">
+                    {(selectedGenAI.matched_required_skills ?? []).map((skill) => (
+                      <span className="skill-tag skill-matched" key={skill}>{skill}</span>
+                    ))}
+                    {(selectedGenAI.matched_required_skills ?? []).length === 0 && (
+                      <span className="muted-copy">No matched required skills recorded.</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ai-skill-group">
+                  <strong>Missing required skills</strong>
+                  <div className="skill-tags">
+                    {(selectedGenAI.missing_required_skills ?? []).map((skill) => (
+                      <span className="skill-tag skill-missing" key={skill}>{skill}</span>
+                    ))}
+                    {(selectedGenAI.missing_required_skills ?? []).length === 0 && (
+                      <span className="muted-copy">No missing required skills recorded.</span>
+                    )}
+                  </div>
+                </div>
+
+                {selectedGenAI.salary_analysis && (
+                  <div className="ai-extra-fact">
+                    <strong>Salary analysis · {selectedGenAI.salary_analysis.status ?? 'unknown'}</strong>
+                    {selectedGenAI.salary_analysis.reason && <p>{selectedGenAI.salary_analysis.reason}</p>}
+                  </div>
+                )}
+
+                {selectedGenAI.security_requirements && selectedGenAI.security_requirements.length > 0 && (
+                  <div className="ai-extra-fact">
+                    <strong>Security requirements</strong>
+                    <ul>
+                      {selectedGenAI.security_requirements.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="detail-section">
               <h4>Location & employment</h4>
