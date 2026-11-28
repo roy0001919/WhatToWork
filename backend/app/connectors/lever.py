@@ -38,6 +38,9 @@ def extract_text(html_content: str | None) -> str | None:
 
 class LeverConnector(BaseJobConnector):
 
+    DEFAULT_PAGE_SIZE = 100
+    DEFAULT_MAX_PAGES = 20
+
     BASE_URLS = {
         "global": "https://api.lever.co/v0/postings",
         "eu": "https://api.eu.lever.co/v0/postings",
@@ -62,7 +65,8 @@ class LeverConnector(BaseJobConnector):
         cls,
         site: str,
         region: str = "global",
-        page_size: int = 100,
+        page_size: int = DEFAULT_PAGE_SIZE,
+        max_pages: int = DEFAULT_MAX_PAGES,
     ) -> list[dict]:
         if region not in cls.BASE_URLS:
             raise ValueError(
@@ -72,14 +76,25 @@ class LeverConnector(BaseJobConnector):
         if not site:
             raise ValueError("Missing Lever site name")
 
+        if not 1 <= page_size <= 100:
+            raise ValueError(
+                "Lever page_size must be between 1 and 100"
+            )
+
+        if max_pages < 1:
+            raise ValueError(
+                "Lever max_pages must be greater than 0"
+            )
+
         base_url = (
             f"{cls.BASE_URLS[region]}/{quote(site, safe='')}"
         )
 
         all_jobs = []
+        seen_pages = set()
         skip = 0
 
-        while True:
+        for page_number in range(1, max_pages + 2):
             params = urlencode({
                 "mode": "json",
                 "skip": skip,
@@ -115,7 +130,34 @@ class LeverConnector(BaseJobConnector):
                     "Unexpected response format from Lever API"
                 )
 
+            if not payload:
+                break
+
+            if page_number > max_pages:
+                raise RuntimeError(
+                    "Lever pagination reached max_pages "
+                    "and additional jobs are available"
+                )
+
+            page_signature = json.dumps(
+                payload,
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+
+            if page_signature in seen_pages:
+                raise RuntimeError(
+                    "Lever API returned a repeated page"
+                )
+
+            seen_pages.add(page_signature)
             all_jobs.extend(payload)
+
+            print(
+                f"Lever page {page_number}: "
+                f"{len(payload)} jobs fetched"
+            )
 
             if len(payload) < page_size:
                 break
@@ -209,9 +251,24 @@ class LeverConnector(BaseJobConnector):
             source_metadata.get("company_name") or site
         )
 
+        page_size = int(
+            source_metadata.get(
+                "page_size",
+                cls.DEFAULT_PAGE_SIZE,
+            )
+        )
+        max_pages = int(
+            source_metadata.get(
+                "max_pages",
+                cls.DEFAULT_MAX_PAGES,
+            )
+        )
+
         raw_jobs = cls.fetch_jobs(
             site=site,
             region=region,
+            page_size=page_size,
+            max_pages=max_pages,
         )
 
         return [

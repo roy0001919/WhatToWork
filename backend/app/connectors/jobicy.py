@@ -161,14 +161,37 @@ class JobicyConnector(BaseJobConnector):
                 f"{page_unique_count} unique"
             )
 
+            if "hasMore" not in payload:
+                raise RuntimeError(
+                    "Jobicy API response is missing hasMore"
+                )
+
+            has_more = payload["hasMore"]
+
+            if not isinstance(has_more, bool):
+                raise RuntimeError(
+                    "Jobicy API returned an invalid hasMore value"
+                )
             next_cursor = payload.get("nextCursor")
 
-            if not payload.get("hasMore") or not next_cursor:
+            if not has_more:
                 break
+
+            if not next_cursor:
+                raise RuntimeError(
+                    "Jobicy API reported more pages "
+                    "but did not provide nextCursor"
+                )
 
             if next_cursor in seen_cursors:
                 raise RuntimeError(
                     "Jobicy API returned a repeated cursor"
+                )
+
+            if page_number == max_pages:
+                raise RuntimeError(
+                    "Jobicy pagination reached max_pages "
+                    "while more pages are available"
                 )
 
             seen_cursors.add(next_cursor)

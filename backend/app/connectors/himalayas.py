@@ -134,6 +134,12 @@ class HimalayasConnector(BaseJobConnector):
                     "Himalayas API returned a repeated cursor"
                 )
 
+            if page_number == max_pages:
+                raise RuntimeError(
+                    "Himalayas pagination reached max_pages "
+                    "while more pages are available"
+                )
+
             seen_cursors.add(next_cursor)
             cursor = next_cursor
 
