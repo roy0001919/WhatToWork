@@ -60,3 +60,32 @@ class DashboardAnalysisListResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+class DashboardAnalysisInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    job_id: int
+    profile_id: int
+
+    eligibility_status: EligibilityStatus
+    technical_match_score: int | None
+    summary: str | None
+    confidence: float | None
+
+    structured_result: dict
+
+    analyzed_at: datetime
+
+
+class DashboardJobListItem(BaseModel):
+    job: DashboardJobInfo
+    analysis: DashboardAnalysisInfo | None
+
+
+class DashboardJobListResponse(BaseModel):
+    items: list[DashboardJobListItem]
+    total: int
+    skip: int
+    limit: int

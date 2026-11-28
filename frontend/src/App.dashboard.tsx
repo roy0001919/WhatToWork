@@ -134,6 +134,18 @@ interface DashboardResponse {
   limit: number
 }
 
+interface DashboardJobListItem {
+  job: DashboardJob
+  analysis: DashboardAnalysis | null
+}
+
+interface DashboardJobListResponse {
+  items: DashboardJobListItem[]
+  total: number
+  skip: number
+  limit: number
+}
+
 const API_BASE_URL = 'http://127.0.0.1:8000'
 const PROFILE_ID = 1
 const PAGE_SIZE = 10
@@ -197,6 +209,20 @@ async function fetchAnalyses(params: URLSearchParams): Promise<DashboardResponse
   return response.json() as Promise<DashboardResponse>
 }
 
+async function fetchDashboardJobs(
+  params: URLSearchParams,
+): Promise<DashboardJobListResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/job-analyses/profiles/${PROFILE_ID}/jobs?${params.toString()}`,
+  )
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+  }
+
+  return response.json() as Promise<DashboardJobListResponse>
+}
+
 function formatDate(value: string | null, language: Language): string {
   if (!value) return language === 'en' ? 'Date unavailable' : '日期無法取得'
 
@@ -248,6 +274,7 @@ function App({
 }: DashboardProps) {
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false)
   const [analyses, setAnalyses] = useState<DashboardAnalysis[]>([])
+  const [dashboardJobs, setDashboardJobs] = useState<DashboardJobListItem[]>([])
   const [agentSearchJobs, setAgentSearchJobs] = useState<AgentSearchJob[]>([])
   const [showAgentSearchResults, setShowAgentSearchResults] = useState(false)
   const [recommendedJobs, setRecommendedJobs] = useState<DashboardAnalysis[]>([])
@@ -408,7 +435,7 @@ function App({
       setStatsLoading(true)
 
       try {
-        const [results, genaiData] = await Promise.all([
+        const [results, genaiData, allJobsResponse] = await Promise.all([
           Promise.all(
             statusOrder.map(async (status) => {
               const params = new URLSearchParams({
@@ -427,6 +454,12 @@ function App({
               limit: '1',
             }),
           ),
+          fetch(`${API_BASE_URL}/api/v1/jobs?limit=1`).then(async (response) => {
+            if (!response.ok) {
+              throw new Error(`Jobs API request failed: ${response.status}`)
+            }
+            return response.json() as Promise<{ total: number }>
+          }),
         ])
 
         if (cancelled) return
@@ -437,7 +470,7 @@ function App({
         })
 
         setCounts(nextCounts)
-        setTotalJobs(results.reduce((sum, [, count]) => sum + count, 0))
+        setTotalJobs(allJobsResponse.total)
         setGenaiTotal(genaiData.total)
       } catch (err) {
         if (!cancelled) {
@@ -485,14 +518,19 @@ function App({
       }
 
       try {
-        const data = await fetchAnalyses(params)
+        const data = await fetchDashboardJobs(params)
 
         if (cancelled) return
 
-        setAnalyses(data.items)
+        setDashboardJobs(data.items)
+        const loadedAnalyses = data.items.flatMap((item) =>
+          item.analysis ? [item.analysis] : [],
+        )
+        setAnalyses(loadedAnalyses)
         setListTotal(data.total)
+
         if (selectedAnalysis) {
-          const updatedSelected = data.items.find(
+          const updatedSelected = loadedAnalyses.find(
             (item) => item.id === selectedAnalysis.id,
           )
           if (!updatedSelected) setSelectedAnalysis(null)
@@ -914,7 +952,7 @@ function App({
                         Loading opportunities...
                       </td>
                     </tr>
-                  ) : (showAgentSearchResults ? agentSearchJobs.length === 0 : analyses.length === 0) ? (
+                  ) : (showAgentSearchResults ? agentSearchJobs.length === 0 : dashboardJobs.length === 0) ? (
                     <tr>
                       <td colSpan={8} className="table-message">
                         <div className="empty-state">
@@ -1026,72 +1064,117 @@ function App({
                       )
                     })
                   ) : (
-                    analyses.map((analysis) => (
-                      <tr
-                        key={analysis.id}
-                        className={selectedAnalysis?.id === analysis.id ? 'row-selected' : ''}
-                        onClick={() => setSelectedAnalysis(analysis)}
-                      >
-                        <td>
-                          <div className="position-cell">
-                            <div className="company-logo">
-                              <Building2 size={18} />
+                    dashboardJobs.map(({ job, analysis }) => {
+                      const score =
+                        analysis?.structured_result.genai?.technical_match_score ??
+                        analysis?.technical_match_score ??
+                        null
+
+                      return (
+                        <tr
+                          key={job.id}
+                          className={
+                            analysis && selectedAnalysis?.id === analysis.id
+                              ? 'row-selected'
+                              : ''
+                          }
+                          onClick={() => {
+                            if (analysis) setSelectedAnalysis(analysis)
+                          }}
+                        >
+                          <td>
+                            <div className="position-cell">
+                              <div className="company-logo">
+                                <Building2 size={18} />
+                              </div>
+                              <div className="position-info">
+                                <strong>{job.title}</strong>
+                                <span>{job.company}</span>
+                              </div>
                             </div>
-                            <div className="position-info">
-                              <strong>{analysis.job.title}</strong>
-                              <span>{analysis.job.company}</span>
+                          </td>
+                          <td>
+                            <div className="location-cell">
+                              <Globe2 size={14} />
+                              <span>
+                                {job.country ?? (language === 'en' ? 'Location not specified' : '未提供地點')}
+                                {job.location ? ` · ${job.location}` : ''}
+                              </span>
                             </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="location-cell">
-                            <Globe2 size={14} />
-                            <span>
-                              {analysis.job.country ?? (language === 'en' ? 'Location not specified' : '未提供地點')}
-                              {analysis.job.location ? ` · ${analysis.job.location}` : ''}
+                          </td>
+                          <td>
+                            <span className="work-type">
+                              {job.workplace_type ?? (language === 'en' ? 'Not specified' : '未提供')}
                             </span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="work-type">
-                            {analysis.job.workplace_type ?? (language === 'en' ? 'Not specified' : '未提供')}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`status-pill ${statusConfig[analysis.eligibility_status].className}`}>
-                            <span className="status-indicator" />
-                            {(language === 'en' ? statusConfig[analysis.eligibility_status].label : statusConfig[analysis.eligibility_status].labelZh)}
-                          </span>
-                        </td>
-                        <td>
-                          {analysis.structured_result.genai?.technical_match_score != null ? (
-                            <span className="ai-match-score">
-                              {analysis.structured_result.genai.technical_match_score}%
+                          </td>
+                          <td>
+                            {analysis ? (
+                              <span className={`status-pill ${statusConfig[analysis.eligibility_status].className}`}>
+                                <span className="status-indicator" />
+                                {language === 'en'
+                                  ? statusConfig[analysis.eligibility_status].label
+                                  : statusConfig[analysis.eligibility_status].labelZh}
+                              </span>
+                            ) : (
+                              <span className="status-pill">
+                                <span className="status-indicator" />
+                                {language === 'en' ? 'Not analyzed' : '尚未分析'}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {score != null ? (
+                              <span className="ai-match-score">{score}%</span>
+                            ) : (
+                              <span className="muted-copy">—</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`analysis-type-pill ${
+                              analysis
+                                ? analysis.structured_result.genai
+                                  ? 'analysis-genai'
+                                  : 'analysis-legacy'
+                                : 'analysis-legacy'
+                            }`}>
+                              {analysis
+                                ? analysis.structured_result.genai
+                                  ? (language === 'en' ? 'GenAI' : '生成式 AI')
+                                  : (language === 'en' ? 'Eligibility' : '資格分析')
+                                : (language === 'en' ? 'Not analyzed' : '尚未分析')}
                             </span>
-                          ) : (
-                            <span className="muted-copy">—</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`analysis-type-pill ${analysis.structured_result.genai ? 'analysis-genai' : 'analysis-legacy'}`}>
-                            {analysis.structured_result.genai ? (language === 'en' ? 'GenAI' : '生成式 AI') : (language === 'en' ? 'Eligibility' : '資格分析')}
-                          </span>
-                        </td>
-                        <td className="date-cell">{formatDate(analysis.job.posted_at, language)}</td>
-                        <td>
-                          <button
-                            className="row-action"
-                            aria-label={language === "en" ? `View ${analysis.job.title}` : `查看 ${analysis.job.title}`}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setSelectedAnalysis(analysis)
-                            }}
-                          >
-                            <ArrowUpRight size={17} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td className="date-cell">
+                            {formatDate(job.posted_at, language)}
+                          </td>
+                          <td>
+                            {analysis ? (
+                              <button
+                                className="row-action"
+                                aria-label={language === 'en' ? `View ${job.title}` : `查看 ${job.title}`}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSelectedAnalysis(analysis)
+                                }}
+                              >
+                                <ArrowUpRight size={17} />
+                              </button>
+                            ) : (
+                              <a
+                                className="row-action"
+                                href={job.apply_url ?? job.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={language === 'en' ? `Open ${job.title}` : `開啟 ${job.title}`}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <ArrowUpRight size={17} />
+                              </a>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -1104,8 +1187,8 @@ function App({
                     ? `Showing ${agentSearchJobs.length} search results`
                     : `顯示 ${agentSearchJobs.length} 筆搜尋結果`
                   : language === 'en'
-                    ? `Showing ${analyses.length ? page * PAGE_SIZE + 1 : 0}–${page * PAGE_SIZE + analyses.length} of ${filteredTotal} opportunities`
-                    : `顯示第 ${analyses.length ? page * PAGE_SIZE + 1 : 0} 至第 ${page * PAGE_SIZE + analyses.length} 筆，共 ${filteredTotal} 筆職缺`}
+                    ? `Showing ${dashboardJobs.length ? page * PAGE_SIZE + 1 : 0}–${page * PAGE_SIZE + dashboardJobs.length} of ${filteredTotal} opportunities`
+                    : `顯示第 ${dashboardJobs.length ? page * PAGE_SIZE + 1 : 0} 至第 ${page * PAGE_SIZE + dashboardJobs.length} 筆，共 ${filteredTotal} 筆職缺`}
               </span>
               {!showAgentSearchResults && (
               <div className="pagination">

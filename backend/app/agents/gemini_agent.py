@@ -120,6 +120,122 @@ Final response:
         text = "\n".join(part.text for part in parts if part.text)
         return text.strip() or None
 
+    @staticmethod
+    def _build_authoritative_tool_summary(
+        tool_results: list[AgentToolResult],
+    ) -> str:
+        jobs: dict[int, dict[str, Any]] = {}
+        failures: list[str] = []
+
+        for tool_result in tool_results:
+            if not tool_result.success:
+                error = tool_result.error or "Unknown error."
+
+                if tool_result.name == "check_eligibility":
+                    failures.append(
+                        f"- check_eligibility failed: "
+                        f"could not verify eligibility — {error}"
+                    )
+                else:
+                    failures.append(
+                        f"- {tool_result.name}: failed — {error}"
+                    )
+
+                continue
+
+            result = tool_result.result
+
+            if not isinstance(result, dict):
+                continue
+
+            job_id = result.get("job_id")
+
+            if type(job_id) is not int or job_id <= 0:
+                continue
+
+            job = jobs.setdefault(
+                job_id,
+                {
+                    "eligibility_status": None,
+                    "technical_match_score": None,
+                    "final_recommendation": None,
+                    "recommendation_reason": None,
+                    "policy_restrictions": [],
+                },
+            )
+
+            eligibility_status = result.get("eligibility_status")
+            if eligibility_status:
+                job["eligibility_status"] = eligibility_status
+
+            technical_score = result.get("technical_match_score")
+            if technical_score is not None:
+                job["technical_match_score"] = technical_score
+
+            structured_result = result.get("structured_result")
+
+            if isinstance(structured_result, dict):
+                recommendation = structured_result.get("recommendation")
+
+                if isinstance(recommendation, dict):
+                    final_recommendation = recommendation.get(
+                        "final_recommendation"
+                    )
+                    if final_recommendation:
+                        job["final_recommendation"] = final_recommendation
+
+                    job["recommendation_reason"] = (
+                        recommendation.get("recommendation_reason")
+                    )
+
+                    restrictions = recommendation.get("policy_restrictions")
+                    if isinstance(restrictions, list):
+                        job["policy_restrictions"] = restrictions
+
+        if not jobs and not failures:
+            return ""
+
+        lines = [
+            "Authoritative backend results "
+            "(these structured results take precedence over "
+            "any conflicting narrative above):"
+        ]
+
+        for job_id, job in sorted(jobs.items()):
+            lines.extend([
+                "",
+                f"Job {job_id}",
+                f"Eligibility: {job['eligibility_status'] or 'not available'}",
+                (
+                    f"Technical match score: {job['technical_match_score']}"
+                    if job["technical_match_score"] is not None
+                    else "Technical match score: not available"
+                ),
+                (
+                    "Final recommendation: "
+                    f"{job['final_recommendation'] or 'not available'}"
+                ),
+            ])
+
+            if job["recommendation_reason"]:
+                lines.append(
+                    "Recommendation reason: "
+                    f"{job['recommendation_reason']}"
+                )
+
+            if job["policy_restrictions"]:
+                lines.append(
+                    "Policy restrictions: "
+                    + ", ".join(
+                        str(item) for item in job["policy_restrictions"]
+                    )
+                )
+
+        if failures:
+            lines.extend(["", "Tool execution failures:", *failures])
+
+        return "\n".join(lines)
+
     @classmethod
     def run(
         cls,
@@ -223,6 +339,24 @@ Final response:
                     )
 
                 final_text = final_text.strip()
+
+                authoritative_summary = (
+                    cls._build_authoritative_tool_summary(tool_results)
+                )
+                if authoritative_summary:
+                    final_text = "The following results are based on authoritative backend tool outputs.\n\n" + authoritative_summary
+
+                authoritative_content = types.Content(
+                    role="model",
+                    parts=[types.Part(text=final_text)],
+                )
+                contents[-1] = authoritative_content
+
+                pending_messages[-1]["content"] = final_text
+                pending_messages[-1]["gemini_payload"] = (
+                    cls._serialize_content(authoritative_content)
+                )
+
                 save_pending_messages()
 
                 return {
@@ -317,12 +451,25 @@ Final response:
                     )
 
                 final_text = final_text.strip()
-                contents.append(final_content)
+
+                authoritative_summary = (
+                    cls._build_authoritative_tool_summary(tool_results)
+                )
+                if authoritative_summary:
+                    final_text = "The following results are based on authoritative backend tool outputs.\n\n" + authoritative_summary
+
+                authoritative_content = types.Content(
+                    role="model",
+                    parts=[types.Part(text=final_text)],
+                )
+                contents.append(authoritative_content)
 
                 pending_messages.append({
                     "role": "assistant",
                     "content": final_text,
-                    "gemini_payload": cls._serialize_content(final_content),
+                    "gemini_payload": cls._serialize_content(
+                        authoritative_content
+                    ),
                 })
 
                 save_pending_messages()

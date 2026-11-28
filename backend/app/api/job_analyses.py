@@ -5,10 +5,12 @@ from app.core.database import get_db
 from app.schemas.job_analysis import JobAnalysisResponse
 from app.schemas.job_dashboard import (
     DashboardAnalysisListResponse,
+    DashboardJobListResponse,
     EligibilityStatus,
 )
 from app.services.job_analysis_service import JobAnalysisService
 from app.repositories.job_analysis_repository import JobAnalysisRepository
+from app.repositories.job_repository import JobRepository
 
 
 router = APIRouter(
@@ -94,6 +96,43 @@ def get_profile_analyses(
 
     return {
         "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.get(
+    "/profiles/{profile_id}/jobs",
+    response_model=DashboardJobListResponse,
+)
+def get_profile_dashboard_jobs(
+    profile_id: int,
+    eligibility_status: EligibilityStatus | None = Query(default=None),
+    search: str | None = Query(default=None, min_length=1, max_length=100),
+    analysis_type: str = Query(
+        default="all",
+        pattern="^(all|genai|eligibility)$",
+    ),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    items, total = JobRepository.get_dashboard_jobs(
+        db=db,
+        profile_id=profile_id,
+        keyword=search,
+        eligibility_status=eligibility_status,
+        analysis_type=analysis_type,
+        skip=skip,
+        limit=limit,
+    )
+
+    return {
+        "items": [
+            {"job": job, "analysis": analysis}
+            for job, analysis in items
+        ],
         "total": total,
         "skip": skip,
         "limit": limit,

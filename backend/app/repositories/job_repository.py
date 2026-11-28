@@ -1,8 +1,11 @@
+import re
+
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
+from app.models.job_analysis import JobAnalysis
 from app.schemas.job import JobCreate
 
 
@@ -75,14 +78,17 @@ class JobRepository:
     ) -> tuple[list[Job], int]:
 
         conditions = [Job.is_active.is_(True)]
+        word_pattern = None
 
-        if keyword:
-            pattern = f"%{keyword.strip()}%"
+        if keyword and keyword.strip():
+            normalized_keyword = re.escape(keyword.strip())
+            word_pattern = rf"\m{normalized_keyword}\M"
+
             conditions.append(
                 or_(
-                    Job.title.ilike(pattern),
-                    Job.company.ilike(pattern),
-                    Job.description.ilike(pattern),
+                    Job.title.op("~*")(word_pattern),
+                    Job.company.op("~*")(word_pattern),
+                    Job.description.op("~*")(word_pattern),
                 )
             )
 
@@ -133,18 +139,23 @@ class JobRepository:
 
         total = db.scalar(count_statement) or 0
 
-        if keyword:
+        if word_pattern:
             relevance_order = case(
-                (Job.title.ilike(pattern), 0),
-                (Job.company.ilike(pattern), 1),
+                (Job.title.op("~*")(word_pattern), 0),
+                (Job.company.op("~*")(word_pattern), 1),
                 else_=2,
             )
+
             ordering = (
                 relevance_order,
                 Job.created_at.desc(),
+                Job.id.desc(),
             )
         else:
-            ordering = (Job.created_at.desc(),)
+            ordering = (
+                Job.created_at.desc(),
+                Job.id.desc(),
+            )
 
         statement = (
             select(Job)
@@ -157,3 +168,70 @@ class JobRepository:
         jobs = list(db.scalars(statement).all())
 
         return jobs, total
+
+    @staticmethod
+    def get_dashboard_jobs(
+        db: Session,
+        profile_id: int,
+        keyword: str | None = None,
+        eligibility_status: str | None = None,
+        analysis_type: str = "all",
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[tuple[Job, JobAnalysis | None]], int]:
+
+        if analysis_type not in {"all", "genai", "eligibility"}:
+            raise ValueError("Invalid analysis_type")
+
+        conditions = [Job.is_active.is_(True)]
+
+        if analysis_type == "genai":
+            conditions.append(
+                JobAnalysis.structured_result.has_key("genai")
+            )
+        elif analysis_type == "eligibility":
+            conditions.append(
+                ~JobAnalysis.structured_result.has_key("genai")
+            )
+
+        if eligibility_status:
+            conditions.append(
+                JobAnalysis.eligibility_status == eligibility_status
+            )
+
+        if keyword:
+            pattern = f"%{keyword.strip()}%"
+            conditions.append(
+                or_(
+                    Job.title.ilike(pattern),
+                    Job.company.ilike(pattern),
+                )
+            )
+
+        join_condition = (
+            (JobAnalysis.job_id == Job.id)
+            & (JobAnalysis.profile_id == profile_id)
+        )
+
+        count_statement = (
+            select(func.count())
+            .select_from(Job)
+            .outerjoin(JobAnalysis, join_condition)
+            .where(*conditions)
+        )
+
+        total = db.scalar(count_statement) or 0
+
+        statement = (
+            select(Job, JobAnalysis)
+            .outerjoin(JobAnalysis, join_condition)
+            .where(*conditions)
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+
+        items = list(db.execute(statement).all())
+
+        return items, total
+
