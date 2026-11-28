@@ -475,3 +475,57 @@
 .language-switcher select:focus {
   border-color: #7184e6;
 }
+
+
+/* Persistent AI sidebar */
+.chat-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  background: #f8f9fc;
+  box-shadow: -8px 0 28px #10182812;
+  animation: none;
+  transition: transform 220ms ease, visibility 220ms ease;
+}
+
+.chat-drawer.is-open {
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.chat-drawer.is-closed {
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(100%);
+}
+
+.chat-drawer-close {
+  display: grid;
+}
+
+@media (max-width: 760px) {
+  .app-main {
+    margin-right: 0 !important;
+  }
+
+  .chat-drawer {
+    width: 100vw !important;
+  }
+
+  .chat-drawer-resize-handle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-drawer {
+    transition: none;
+  }
+}

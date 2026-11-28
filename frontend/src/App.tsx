@@ -12,6 +12,13 @@ import type { Language } from './i18n'
 import Dashboard from './App.dashboard'
 import './AppShell.css'
 
+type AgentAction = {
+  id?: string | null
+  name: string
+  arguments?: Record<string, unknown>
+  result?: unknown
+}
+
 export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [drawerWidth, setDrawerWidth] = useState(420)
@@ -20,6 +27,12 @@ export default function App() {
       ? 'zh-TW'
       : 'en'
   })
+
+  const [agentActions, setAgentActions] = useState<AgentAction[] | null>(null)
+
+  function handleAgentAction(actions: AgentAction[]) {
+    setAgentActions(actions)
+  }
 
   const resizeStart = useRef<{
     x: number
@@ -74,7 +87,7 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${isChatOpen ? "ai-panel-open" : ""}`}>
       <aside className="app-sidebar">
         <div className="app-brand">
           <div className="app-brand-icon">
@@ -114,9 +127,17 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="app-main">
+      <main
+        className="app-main"
+        style={{ marginRight: isChatOpen ? `${drawerWidth}px` : 0 }}
+      >
         <div className="app-main-dashboard">
-          <Dashboard language={language} onLanguageChange={setLanguage} onOpenAI={() => setIsChatOpen(true)} />
+          <Dashboard
+            language={language}
+            onLanguageChange={setLanguage}
+            onOpenAI={() => setIsChatOpen(true)}
+            agentActions={agentActions}
+          />
         </div>
       </main>
 
@@ -132,48 +153,40 @@ export default function App() {
         </button>
       )}
 
-      {isChatOpen && (
-        <>
-          <button
-            className="chat-drawer-backdrop"
-            type="button"
-            aria-label={language === "en" ? "Close AI assistant" : "關閉 AI 助理"}
-            onClick={() => setIsChatOpen(false)}
-          />
+      <aside
+        className={`chat-drawer ${isChatOpen ? "is-open" : "is-closed"}`}
+        style={{
+          width: `min(${drawerWidth}px, calc(100vw - 24px))`,
+        }}
+        aria-hidden={!isChatOpen}
+        aria-label={language === "en" ? "WhatToWork AI Assistant" : "WhatToWork AI 助理"}
+      >
+        <div
+          className="chat-drawer-resize-handle"
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeEnd}
+          onPointerCancel={handleResizeEnd}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize chat panel"
+        />
 
-          <aside
-            className="chat-drawer"
-            style={{
-              width: `min(${drawerWidth}px, calc(100vw - 24px))`,
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-label={language === "en" ? "WhatToWork AI Assistant" : "WhatToWork AI 助理"}
-          >
-            <div
-              className="chat-drawer-resize-handle"
-              onPointerDown={handleResizeStart}
-              onPointerMove={handleResizeMove}
-              onPointerUp={handleResizeEnd}
-              onPointerCancel={handleResizeEnd}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize chat panel"
-            />
+        <button
+          className="chat-drawer-close"
+          type="button"
+          onClick={() => setIsChatOpen(false)}
+          aria-label={language === "en" ? "Close chat" : "關閉對話"}
+          tabIndex={isChatOpen ? 0 : -1}
+        >
+          <X size={19} />
+        </button>
 
-            <button
-              className="chat-drawer-close"
-              type="button"
-              onClick={() => setIsChatOpen(false)}
-              aria-label={language === "en" ? "Close chat" : "關閉對話"}
-            >
-              <X size={19} />
-            </button>
-
-            <ChatPage language={language} />
-          </aside>
-        </>
-      )}
+        <ChatPage
+          language={language}
+          onAgentAction={handleAgentAction}
+        />
+      </aside>
     </div>
   )
 }

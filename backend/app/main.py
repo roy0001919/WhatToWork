@@ -10,6 +10,7 @@ from app.api.job_sources import router as job_sources_router
 from app.api.jobs import router as jobs_router
 from app.api.user_profiles import router as user_profiles_router
 from app.api.job_analyses import router as job_analyses_router
+from app.api.agent import router as agent_router
 
 
 app = FastAPI(
@@ -34,6 +35,7 @@ app.include_router(job_sources_router)
 app.include_router(jobs_router)
 app.include_router(user_profiles_router)
 app.include_router(job_analyses_router)
+app.include_router(agent_router)
 
 
 @app.get("/")

@@ -15,6 +15,11 @@ interface Message {
   tasks?: string[]
 }
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+
+const PROFILE_ID = 1
+
 const automationTasks = [
   {
     id: 'discover',
@@ -54,11 +59,27 @@ const automationTasks = [
   },
 ]
 
-interface ChatPageProps {
-  language: Language
+interface AgentToolCallPayload {
+  id?: string | null
+  name: string
+  arguments?: Record<string, unknown>
+  result?: unknown
 }
 
-export default function ChatPage({ language }: ChatPageProps) {
+interface AgentToolResultPayload {
+  id?: string | null
+  name: string
+  success: boolean
+  result?: unknown
+  error?: string | null
+}
+
+interface ChatPageProps {
+  language: Language
+  onAgentAction: (actions: AgentToolCallPayload[]) => void
+}
+
+export default function ChatPage({ language, onAgentAction }: ChatPageProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -71,6 +92,9 @@ export default function ChatPage({ language }: ChatPageProps) {
     },
   ])
   const [nextId, setNextId] = useState(1)
+  const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState('')
+  const [conversationId, setConversationId] = useState<string | null>(null)
 
   useEffect(() => {
     setMessages((current) =>
@@ -135,35 +159,122 @@ export default function ChatPage({ language }: ChatPageProps) {
     )
   }
 
-  function sendMessage(value = input) {
+  async function sendMessage(value = input) {
     const content = value.trim()
 
-    if (!content) return
+    if (!content || isSending) return
 
     const selectedTaskNames = localizedTasks
       .filter((task) => selectedTasks.includes(task.id))
       .map((task) => task.title)
 
+    const userMessageId = nextId
+    const assistantMessageId = nextId + 1
+
     setMessages((current) => [
       ...current,
       {
-        id: nextId,
+        id: userMessageId,
         role: 'user',
         content,
         tasks: selectedTaskNames,
-      },
-      {
-        id: nextId + 1,
-        role: 'assistant',
-        content:
-          language === 'en'
-            ? 'Your message is displayed in this local UI preview. The Agent API is not connected yet, so no job search or automation has been executed.'
-            : '你的訊息已顯示在本機介面預覽中。目前尚未連接 Agent API，因此還沒有實際執行職缺搜尋或自動化任務。',
       },
     ])
 
     setNextId((current) => current + 2)
     setInput('')
+    setError('')
+    setIsSending(true)
+
+    try {
+      const agentMessage = selectedTaskNames.length
+        ? `${content}\n\nPlease prioritize these selected tasks: ${selectedTaskNames.join(', ')}.`
+        : content
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/agent/chat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            profile_id: PROFILE_ID,
+            message: agentMessage,
+            conversation_id: conversationId || undefined,
+          }),
+        },
+      )
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail ||
+          `Agent API request failed (${response.status})`,
+        )
+      }
+
+      setConversationId(data.conversation_id)
+
+      const toolCalls =
+        (data.tool_calls ?? []) as AgentToolCallPayload[]
+
+      const toolResults =
+        (data.tool_results ?? []) as AgentToolResultPayload[]
+
+      const usedResultIndexes = new Set<number>()
+
+      const completedActions = toolCalls.flatMap((call) => {
+        const resultIndex = toolResults.findIndex((result, index) => {
+          if (usedResultIndexes.has(index)) return false
+
+          if (call.id) {
+            return result.id === call.id
+          }
+
+          return !result.id && result.name === call.name
+        })
+
+        if (resultIndex === -1) return []
+
+        usedResultIndexes.add(resultIndex)
+
+        const matchingResult = toolResults[resultIndex]
+
+        if (!matchingResult.success) return []
+
+        return [{
+          ...call,
+          result: matchingResult.result,
+        }]
+      })
+
+      if (completedActions.length > 0) {
+        onAgentAction(completedActions)
+      }
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: data.message,
+        },
+      ])
+    } catch (err) {
+      console.error('Agent API error:', err)
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : language === 'en'
+            ? 'Unable to connect to the AI Agent.'
+            : '無法連線至 AI Agent。',
+      )
+    } finally {
+      setIsSending(false)
+    }
   }
 
   return (
@@ -171,7 +282,7 @@ export default function ChatPage({ language }: ChatPageProps) {
       <header className="chat-topbar">
         <div>
           <div className="chat-breadcrumb">
-            {language === 'en' ? 'Workspace' : '工作空間'} <span>/</span> <strong>AI Agent</strong>
+            {language === 'en' ? 'Workspace' : '工作空間'} <span>/</span> <strong>{language === 'en' ? 'AI Agent' : 'AI 助理'}</strong>
           </div>
           <div className="chat-page-subtitle">
             {language === 'en' ? 'Your personal job search assistant' : '你的 AI 求職助理'}
@@ -180,7 +291,7 @@ export default function ChatPage({ language }: ChatPageProps) {
 
         <div className="agent-status">
           <span className="agent-status-dot" />
-          {language === 'en' ? 'UI Preview' : '介面預覽'}
+          {language === 'en' ? 'AI Agent' : 'AI 助理'}
         </div>
       </header>
 
@@ -191,8 +302,8 @@ export default function ChatPage({ language }: ChatPageProps) {
           <section className="automation-options">
             <div className="automation-heading">
               <div>
-                <h2>Automation Options</h2>
-                <p>Select the tasks you want your AI agent to handle.</p>
+                <h2>{language === 'en' ? 'Automation Options' : '自動化任務'}</h2>
+                <p>{language === 'en' ? 'Select the tasks you want your AI agent to handle.' : '選擇希望 AI 助理執行的任務。'}</p>
               </div>
 
               <div className="automation-heading-actions">
@@ -214,12 +325,12 @@ export default function ChatPage({ language }: ChatPageProps) {
                   {automationTasks
                     .filter((task) => task.available)
                     .every((task) => selectedTasks.includes(task.id))
-                    ? 'Deselect All'
-                    : 'Select All'}
+                    ? (language === 'en' ? 'Deselect All' : '全部取消')
+                    : (language === 'en' ? 'Select All' : '全部選取')}
                 </button>
 
                 <span className="automation-selected-count">
-                  {selectedTasks.length} selected
+                  {language === 'en' ? `${selectedTasks.length} selected` : `已選取 ${selectedTasks.length} 項`}
                 </span>
               </div>
             </div>
@@ -254,7 +365,7 @@ export default function ChatPage({ language }: ChatPageProps) {
                     {!task.available && (
                       <span className="automation-coming-soon">
                         <Clock3 size={11} />
-                        Soon
+                        {language === 'en' ? 'Soon' : '即將推出'}
                       </span>
                     )}
                   </label>
@@ -311,6 +422,21 @@ export default function ChatPage({ language }: ChatPageProps) {
             )}
           </div>
 
+          {isSending && (
+            <div className="chat-request-status">
+              {language === 'en'
+                ? 'AI Agent is working...'
+                : 'AI 助理正在處理你的請求...'}
+            </div>
+          )}
+
+          {error && (
+            <div className="chat-error" role="alert">
+              {language === 'en' ? 'Request failed: ' : '請求失敗：'}
+              {error}
+            </div>
+          )}
+
           {/* Chat Input */}
           <div className="chat-composer-area">
             <div className="chat-composer">
@@ -318,12 +444,16 @@ export default function ChatPage({ language }: ChatPageProps) {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                  if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
                     event.preventDefault()
                     sendMessage()
                   }
                 }}
-                placeholder={language === 'en' ? 'Tell your AI agent what you want to accomplish...' : '告訴 AI Agent 你想完成什麼任務...'}
+                placeholder={language === 'en' ? 'Tell your AI agent what you want to accomplish...' : '告訴 AI 助理你想完成什麼任務...'}
                 rows={2}
               />
 
@@ -340,7 +470,7 @@ export default function ChatPage({ language }: ChatPageProps) {
                   </button>
 
                   <span className="composer-hint">
-                    {language === 'en' ? 'Enter for new line · Cmd/Ctrl + Enter to send' : 'Enter 換行 · Cmd/Ctrl + Enter 送出'}
+                    {language === 'en' ? 'Enter to send · Shift + Enter for new line' : 'Enter 送出 · Shift + Enter 換行'}
                   </span>
                 </div>
 
@@ -348,7 +478,7 @@ export default function ChatPage({ language }: ChatPageProps) {
                   className="composer-send"
                   type="button"
                   onClick={() => sendMessage()}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isSending}
                   aria-label={language === "en" ? "Send message" : "送出訊息"}
                 >
                   <ArrowUp size={19} />
@@ -357,7 +487,9 @@ export default function ChatPage({ language }: ChatPageProps) {
             </div>
 
             <p className="chat-disclaimer">
-              {language === 'en' ? 'Preview mode — messages are not sent to an AI service yet.' : '預覽模式 — 訊息尚未傳送至 AI 服務。'}
+              {language === 'en'
+                ? 'AI-generated responses may require verification.'
+                : 'AI 產生的回覆仍建議自行確認。'}
             </p>
           </div>
         </section>

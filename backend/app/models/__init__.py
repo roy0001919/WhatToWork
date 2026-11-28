@@ -8,4 +8,8 @@ __all__ = [
     "Job",
     "UserProfile",
     "JobAnalysis",
+    "Conversation",
+    "ConversationMessage",
 ]
+
+from app.models.conversation import Conversation, ConversationMessage

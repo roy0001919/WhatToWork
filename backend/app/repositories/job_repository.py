@@ -1,4 +1,4 @@
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -99,9 +99,26 @@ class JobRepository:
             )
 
         if employment_type:
+            normalized_employment_type = (
+                employment_type.strip()
+                .lower()
+                .replace("_", "-")
+                .replace(" ", "-")
+            )
+
+            normalized_db_employment_type = func.replace(
+                func.replace(
+                    func.lower(Job.employment_type),
+                    "_",
+                    "-",
+                ),
+                " ",
+                "-",
+            )
+
             conditions.append(
-                Job.employment_type.ilike(
-                    f"%{employment_type.strip()}%"
+                normalized_db_employment_type.ilike(
+                    f"%{normalized_employment_type}%"
                 )
             )
 
@@ -116,10 +133,23 @@ class JobRepository:
 
         total = db.scalar(count_statement) or 0
 
+        if keyword:
+            relevance_order = case(
+                (Job.title.ilike(pattern), 0),
+                (Job.company.ilike(pattern), 1),
+                else_=2,
+            )
+            ordering = (
+                relevance_order,
+                Job.created_at.desc(),
+            )
+        else:
+            ordering = (Job.created_at.desc(),)
+
         statement = (
             select(Job)
             .where(*conditions)
-            .order_by(Job.created_at.desc())
+            .order_by(*ordering)
             .offset(skip)
             .limit(limit)
         )

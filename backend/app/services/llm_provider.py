@@ -1,4 +1,7 @@
+from typing import Any
+
 from google import genai
+from google.genai import types
 
 from app.core.config import settings
 
@@ -50,6 +53,36 @@ class LLMProvider:
             )
 
         return response.text.strip()
+
+    def generate_content(
+        self,
+        contents: Any,
+        config: types.GenerateContentConfig | None = None,
+        model: str | None = None,
+    ):
+        """
+        Generate Gemini content and return the complete response.
+
+        Unlike generate_text(), this method preserves function calls,
+        candidate contents, and other response metadata.
+        """
+        if contents is None:
+            raise ValueError("Contents cannot be empty.")
+
+        client = self._get_client()
+
+        response = client.models.generate_content(
+            model=model or settings.gemini_model,
+            contents=contents,
+            config=config,
+        )
+
+        if response is None:
+            raise RuntimeError(
+                "Gemini returned an empty response."
+            )
+
+        return response
 
 
 llm_provider = LLMProvider()

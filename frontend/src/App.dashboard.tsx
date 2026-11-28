@@ -77,6 +77,29 @@ interface DashboardJob {
   is_active: boolean
 }
 
+interface AgentSearchJob {
+  id: number
+  title: string
+  company: string
+  location: string | null
+  country: string | null
+  workplace_type: string | null
+  employment_type: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_currency: string | null
+  source_url: string
+  apply_url: string | null
+  posted_at: string | null
+}
+
+interface AgentSearchResult {
+  total: number
+  skip: number
+  limit: number
+  items: AgentSearchJob[]
+}
+
 interface DashboardAnalysis {
   id: number
   job_id: number
@@ -203,15 +226,30 @@ function getEvidenceLabel(type: string, language: Language): string {
   return type.replaceAll('_', ' ')
 }
 
+interface AgentAction {
+  id?: string | null
+  name: string
+  arguments?: Record<string, unknown>
+  result?: unknown
+}
+
 interface DashboardProps {
   language: Language
   onLanguageChange: (language: Language) => void
   onOpenAI: () => void
+  agentActions: AgentAction[] | null
 }
 
-function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
+function App({
+  language,
+  onLanguageChange,
+  onOpenAI,
+  agentActions,
+}: DashboardProps) {
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false)
   const [analyses, setAnalyses] = useState<DashboardAnalysis[]>([])
+  const [agentSearchJobs, setAgentSearchJobs] = useState<AgentSearchJob[]>([])
+  const [showAgentSearchResults, setShowAgentSearchResults] = useState(false)
   const [recommendedJobs, setRecommendedJobs] = useState<DashboardAnalysis[]>([])
   const [selectedAnalysis, setSelectedAnalysis] =
     useState<DashboardAnalysis | null>(null)
@@ -230,10 +268,53 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
   const [statusFilter, setStatusFilter] = useState<EligibilityStatus | 'all'>('all')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('all')
   const [page, setPage] = useState(0)
+  const [refreshVersion, setRefreshVersion] = useState(0)
 
   const [loading, setLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!agentActions?.length) return
+
+    const searchAction = [...agentActions]
+      .reverse()
+      .find((action) => action.name === 'search_jobs')
+
+    const actionNames = new Set(agentActions.map((action) => action.name))
+    const hasAnalysisAction =
+      actionNames.has('analyze_job') || actionNames.has('check_eligibility')
+
+    if (searchAction) {
+      const result = searchAction.result as AgentSearchResult | undefined
+
+      if (result && Array.isArray(result.items)) {
+        setAgentSearchJobs(result.items)
+        setShowAgentSearchResults(true)
+      }
+    } else if (hasAnalysisAction) {
+      setShowAgentSearchResults(false)
+      setAgentSearchJobs([])
+    } else {
+      return
+    }
+
+    if (actionNames.has('analyze_job')) {
+      setAnalysisType('genai')
+      setStatusFilter('all')
+    } else if (actionNames.has('check_eligibility')) {
+      setAnalysisType('eligibility')
+      setStatusFilter('all')
+    }
+
+    setPage(0)
+    setRefreshVersion((current) => current + 1)
+
+    document.getElementById('jobs')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }, [agentActions])
 
   // Load and rank AI-recommended jobs independently from the job list.
   useEffect(() => {
@@ -317,7 +398,7 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [refreshVersion])
 
   // Load status counts independently from the current list filters.
   useEffect(() => {
@@ -376,9 +457,9 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
     return () => {
       cancelled = true
     }
-    // Load once when the dashboard mounts.
+    // Refresh statistics after successful agent analysis actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshVersion])
 
   // Load the job list whenever search, status, or page changes.
   useEffect(() => {
@@ -432,7 +513,7 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
     return () => {
       cancelled = true
     }
-  }, [page, search, statusFilter, analysisType])
+  }, [page, search, statusFilter, analysisType, refreshVersion])
 
   const filteredTotal = listTotal
 
@@ -739,7 +820,7 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
               </div>
               <div className="job-count">
                 <span className="count-dot" />
-                {filteredTotal} opportunities
+                {showAgentSearchResults ? agentSearchJobs.length : filteredTotal} opportunities
               </div>
             </div>
 
@@ -833,7 +914,7 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
                         Loading opportunities...
                       </td>
                     </tr>
-                  ) : analyses.length === 0 ? (
+                  ) : (showAgentSearchResults ? agentSearchJobs.length === 0 : analyses.length === 0) ? (
                     <tr>
                       <td colSpan={8} className="table-message">
                         <div className="empty-state">
@@ -843,6 +924,107 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
                         </div>
                       </td>
                     </tr>
+                  ) : showAgentSearchResults ? (
+                    agentSearchJobs.map((job) => {
+                      const analysis = analyses.find(
+                        (item) => item.job_id === job.id,
+                      )
+
+                      return (
+                      <tr
+                        key={`agent-search-${job.id}`}
+                        className={analysis && selectedAnalysis?.id === analysis.id ? 'row-selected' : ''}
+                        onClick={() => {
+                          if (analysis) setSelectedAnalysis(analysis)
+                        }}
+                      >
+                        <td>
+                          <div className="position-cell">
+                            <div className="company-logo">
+                              <Building2 size={18} />
+                            </div>
+                            <div className="position-info">
+                              <strong>{job.title}</strong>
+                              <span>{job.company}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="location-cell">
+                            <Globe2 size={14} />
+                            <span>
+                              {job.country ?? (language === 'en' ? 'Location not specified' : '未提供地點')}
+                              {job.location ? ` · ${job.location}` : ''}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="work-type">
+                            {job.workplace_type ?? (language === 'en' ? 'Not specified' : '未提供')}
+                          </span>
+                        </td>
+                        <td>
+                          {analysis ? (
+                            <span className={`status-pill ${statusConfig[analysis.eligibility_status].className}`}>
+                              <span className="status-indicator" />
+                              {language === 'en'
+                                ? statusConfig[analysis.eligibility_status].label
+                                : statusConfig[analysis.eligibility_status].labelZh}
+                            </span>
+                          ) : (
+                            <span className="status-pill">
+                              <span className="status-indicator" />
+                              {language === 'en' ? 'Not analyzed' : '尚未分析'}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {analysis?.structured_result.genai?.technical_match_score != null ? (
+                            <span className="ai-match-score">
+                              {analysis.structured_result.genai.technical_match_score}%
+                            </span>
+                          ) : (
+                            <span className="muted-copy">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`analysis-type-pill ${analysis?.structured_result.genai ? 'analysis-genai' : 'analysis-legacy'}`}>
+                            {analysis
+                              ? analysis.structured_result.genai
+                                ? (language === 'en' ? 'GenAI' : '生成式 AI')
+                                : (language === 'en' ? 'Eligibility' : '資格分析')
+                              : (language === 'en' ? 'Search result' : '搜尋結果')}
+                          </span>
+                        </td>
+                        <td className="date-cell">{formatDate(job.posted_at, language)}</td>
+                        <td>
+                          {analysis ? (
+                            <button
+                              className="row-action"
+                              aria-label={language === 'en' ? `View ${job.title}` : `查看 ${job.title}`}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setSelectedAnalysis(analysis)
+                              }}
+                            >
+                              <ArrowUpRight size={17} />
+                            </button>
+                          ) : (
+                            <a
+                              className="row-action"
+                              href={job.apply_url ?? job.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={language === 'en' ? `Open ${job.title}` : `開啟 ${job.title}`}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <ArrowUpRight size={17} />
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                      )
+                    })
                   ) : (
                     analyses.map((analysis) => (
                       <tr
@@ -917,10 +1099,15 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
 
             <div className="table-footer">
               <span>
-                {language === 'en'
-                  ? `Showing ${analyses.length ? page * PAGE_SIZE + 1 : 0}–${page * PAGE_SIZE + analyses.length} of ${filteredTotal} opportunities`
-                  : `顯示第 ${analyses.length ? page * PAGE_SIZE + 1 : 0} 至第 ${page * PAGE_SIZE + analyses.length} 筆，共 ${filteredTotal} 筆職缺`}
+                {showAgentSearchResults
+                  ? language === 'en'
+                    ? `Showing ${agentSearchJobs.length} search results`
+                    : `顯示 ${agentSearchJobs.length} 筆搜尋結果`
+                  : language === 'en'
+                    ? `Showing ${analyses.length ? page * PAGE_SIZE + 1 : 0}–${page * PAGE_SIZE + analyses.length} of ${filteredTotal} opportunities`
+                    : `顯示第 ${analyses.length ? page * PAGE_SIZE + 1 : 0} 至第 ${page * PAGE_SIZE + analyses.length} 筆，共 ${filteredTotal} 筆職缺`}
               </span>
+              {!showAgentSearchResults && (
               <div className="pagination">
                 <button
                   disabled={page === 0 || loading}
@@ -938,6 +1125,7 @@ function App({ language, onLanguageChange, onOpenAI }: DashboardProps) {
                   <ChevronRight size={17} />
                 </button>
               </div>
+              )}
             </div>
           </section>
 
